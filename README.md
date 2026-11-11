@@ -1,2 +1,2 @@
-# nocturne
-nocturne.bz
+# nocturna
+just assets like hitsounds, configs :/
