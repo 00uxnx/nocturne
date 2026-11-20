@@ -14,7 +14,7 @@ local TweenService = game:GetService("TweenService")
 local RunService = game:GetService("RunService")
 
 local FONT = Enum.Font.Code
-local AUTO_CLOSE_SECONDS = 10 -- Set to 0 to keep the window open until manually destroyed.
+local AUTO_CLOSE_SECONDS = 0 -- Set above zero to enable automatic closing.
 
 local httpRequest = (syn and syn.request)
     or (http and http.request)
@@ -22,12 +22,22 @@ local httpRequest = (syn and syn.request)
     or request
 
 local function httpGet(url)
-    if not httpRequest then return nil end
-    local ok, res = pcall(httpRequest, { Url = url, Method = "GET" })
-    if not ok or not res or res.StatusCode ~= 200 or not res.Body then
-        return nil
+    if httpRequest then
+        local ok, res = pcall(httpRequest, { Url = url, Method = "GET" })
+        if ok and res and (res.StatusCode == 200 or res.StatusCode == 0) and type(res.Body) == "string" then
+            return res.Body
+        end
     end
-    return res.Body
+
+    -- Some supported environments expose HttpGet instead of request().
+    local ok, body = pcall(function()
+        return game:HttpGet(url)
+    end)
+    if ok and type(body) == "string" and body ~= "" then
+        return body
+    end
+
+    return nil
 end
 
 local function newSignal()
@@ -146,51 +156,53 @@ local function runTest(name)
         return { Name = name, Success = false, Reason = "Not a function" }
     end
 
-    -- Test URL-based require and validate the table returned by req.lua.
+    -- Fetch and execute the remote test module as a Lua chunk. This does NOT
+    -- call the executor's require(URL), because standard require expects a
+    -- ModuleScript/asset identifier rather than a raw GitHub URL.
     if name == "require" then
-    local body = httpGet(REQUIRE_TEST_URL)
+        local body = httpGet(REQUIRE_TEST_URL)
+        if not body or body == "" then
+            return {
+                Name = name,
+                Success = false,
+                Reason = "Could not download req.lua (HTTP request unavailable or failed)",
+            }
+        end
 
-    if not body then
+        local compileOk, loader, compileError = pcall(loadstring, body)
+        if not compileOk or type(loader) ~= "function" then
+            return {
+                Name = name,
+                Success = false,
+                Reason = "req.lua compile failed: " .. tostring(compileError or loader),
+            }
+        end
+
+        local runOk, result = pcall(loader)
+        if not runOk then
+            return {
+                Name = name,
+                Success = false,
+                Reason = "req.lua execution failed: " .. tostring(result),
+            }
+        end
+
+        if type(result) ~= "table" then
+            return {
+                Name = name,
+                Success = false,
+                Reason = "req.lua must return a table; got " .. typeof(result),
+            }
+        end
+
         return {
             Name = name,
-            Success = false,
-            Reason = "Failed to download req.lua"
+            Success = result.Success == true,
+            Reason = tostring(result.Message or "No message returned"),
         }
     end
 
-    local loader, compileError = loadstring(body)
-
-    if not loader then
-        return {
-            Name = name,
-            Success = false,
-            Reason = tostring(compileError)
-        }
-    end
-
-    local ok, result = pcall(loader)
-
-    if not ok then
-        return {
-            Name = name,
-            Success = false,
-            Reason = tostring(result)
-        }
-    end
-
-    if type(result) ~= "table" then
-        return {
-            Name = name,
-            Success = false,
-            Reason = "Invalid callback response"
-        }
-    end
-
-    return {
-        Name = name,
-        Success = result.Success == true,
-        Reason = tostring(result.Message or "No message returned")
-    }
+    return { Name = name, Success = true }
 end
 
 local function getOrderedSections(data)
@@ -220,6 +232,18 @@ function FunctionnalityTester:Init(funcs)
 
     local Players = game:GetService("Players")
     local localPlayer = Players.LocalPlayer
+    if not localPlayer then
+        error("FunctionnalityTester must be initialized on the client")
+    end
+
+    -- PlayerGui is the supported Roblox UI parent.
+    local parentTo = localPlayer:WaitForChild("PlayerGui")
+
+    -- Remove an earlier copy so repeated Init() calls do not stack GUIs.
+    local previousGui = parentTo:FindFirstChild("FunctionnalityTester")
+    if previousGui then
+        previousGui:Destroy()
+    end
 
     local gui = make("ScreenGui", {
         Name = "FunctionnalityTester",
@@ -227,7 +251,7 @@ function FunctionnalityTester:Init(funcs)
         IgnoreGuiInset = true,
         ResetOnSpawn = false,
         DisplayOrder = 9999,
-        Parent = game.CoreGui,
+        Parent = parentTo,
         Enabled = true
     })
 
