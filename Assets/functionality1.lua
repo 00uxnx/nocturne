@@ -1,5 +1,5 @@
 local FunctionnalityTester = {
-    Version = '2.1'
+    Version = '2.3'
 }
 
 local MOTD_URL = 'https://raw.githubusercontent.com/00uxnx/productions/main/extra/motd.txt'
@@ -448,18 +448,16 @@ function FunctionnalityTester:Init(funcs)
     clStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
     clStroke.Color = Color3.fromRGB(50, 50, 50)
 
-    -- Simple rotating star glyph instead of the old image asset.
-    local twis = make("TextLabel", {
+    -- Roblox-hosted spinner image. Uses the existing Roblox image asset ID
+    -- from the original script; no local file or getcustomasset is required.
+    local twis = make("ImageLabel", {
         Name = "SpinnerIcon",
-        Text = "✦",
-        TextColor3 = Color3.fromRGB(125, 125, 145),
-        TextSize = 34,
-        Font = Enum.Font.GothamBold,
-        TextXAlignment = Enum.TextXAlignment.Center,
-        TextYAlignment = Enum.TextYAlignment.Center,
+        Image = "rbxassetid://10723433935",
+        ImageColor3 = Color3.fromRGB(160, 160, 175),
         BackgroundTransparency = 1,
         Position = UDim2.new(0.4428, 0, 0.819, 0),
         Size = UDim2.new(0.1026, 0, 0.141, 0),
+        ScaleType = Enum.ScaleType.Fit,
         BorderSizePixel = 0,
         Parent = holder,
     })
