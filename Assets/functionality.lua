@@ -4,7 +4,7 @@ local FunctionnalityTester = {
 
 local MOTD_URL = 'https://raw.githubusercontent.com/00uxnx/productions/main/extra/motd.txt'
 local CHANGELOGS_URL = 'https://raw.githubusercontent.com/00uxnx/productions/main/extra/Changelogs.lua'
-local REQUIRE_TEST_URL = 'https://raw.githubusercontent.com/00uxnx/nocturne/refs/heads/main/Assets/req.lua'
+local REQUIRE_TEST_URL = 'https://raw.githubusercontent.com/00uxnx/nocturne/main/Assets/req.lua'
 local execfuncs = {}
 
 local SECTION_ORDER = { "Loader", "Vantage", "Rivals", "Doors" }
