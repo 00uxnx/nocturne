@@ -171,6 +171,7 @@ function FunctionnalityTester:Init(funcs)
         ResetOnSpawn = false,
         DisplayOrder = 9999,
         Parent = parentTo,
+        Enabled = true
     })
 
     local mainWindow = make("CanvasGroup", {
