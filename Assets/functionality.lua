@@ -4,6 +4,7 @@ local FunctionnalityTester = {
 
 local MOTD_URL = 'https://raw.githubusercontent.com/00uxnx/productions/main/extra/motd.txt'
 local CHANGELOGS_URL = 'https://raw.githubusercontent.com/00uxnx/productions/main/extra/Changelogs.lua'
+local REQUIRE_TEST_URL = 'https://raw.githubusercontent.com/00uxnx/nocturne/refs/heads/main/Assets/req.lua'
 local execfuncs = {}
 
 local SECTION_ORDER = { "Loader", "Vantage", "Rivals", "Doors" }
@@ -91,7 +92,6 @@ local function makeDraggable(target, handle)
     end)
 end
 
--- Look up a function name across the environments executors expose.
 local function lookupFunc(name)
     local env
     local ok = pcall(function() env = getfenv(0) end)
@@ -120,20 +120,14 @@ local function runTest(name)
         return { Name = name, Success = false, Reason = "Not a function" }
     end
 
-    -- require is the one we actually try to call so we can surface its error.
+    -- Actually attempt to require the remote example script
     if name == "require" then
-        local okCall, err = pcall(fn, 0)
+        local okCall, result = pcall(fn, REQUIRE_TEST_URL)
         if not okCall then
-            local msg = tostring(err)
-            local low = msg:lower()
-            -- Only treat this as broken require if the error is about require itself,
-            -- not the (intentionally invalid) argument 0.
-            if low:find("attempt to call")
-                or low:find("is not a function")
-                or low:find("nil value") then
-                return { Name = name, Success = false, Reason = msg }
-            end
+            local msg = tostring(result)
+            return { Name = name, Success = false, Reason = msg }
         end
+        return { Name = name, Success = true }
     end
 
     return { Name = name, Success = true }
