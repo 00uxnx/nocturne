@@ -148,42 +148,49 @@ local function runTest(name)
 
     -- Test URL-based require and validate the table returned by req.lua.
     if name == "require" then
-        local okCall, result = pcall(function()
-            return fn(REQUIRE_TEST_URL)
-        end)
+    local body = httpGet(REQUIRE_TEST_URL)
 
-        if not okCall then
-            return {
-                Name = name,
-                Success = false,
-                Reason = "require call failed: " .. tostring(result),
-            }
-        end
-
-        if type(result) ~= "table" then
-            return {
-                Name = name,
-                Success = false,
-                Reason = "req.lua must return a table; got " .. typeof(result),
-            }
-        end
-
-        if result.Success ~= true then
-            return {
-                Name = name,
-                Success = false,
-                Reason = tostring(result.Message or "The require test returned Success = false"),
-            }
-        end
-
+    if not body then
         return {
             Name = name,
-            Success = true,
-            Reason = tostring(result.Message or "require test passed"),
+            Success = false,
+            Reason = "Failed to download req.lua"
         }
     end
 
-    return { Name = name, Success = true }
+    local loader, compileError = loadstring(body)
+
+    if not loader then
+        return {
+            Name = name,
+            Success = false,
+            Reason = tostring(compileError)
+        }
+    end
+
+    local ok, result = pcall(loader)
+
+    if not ok then
+        return {
+            Name = name,
+            Success = false,
+            Reason = tostring(result)
+        }
+    end
+
+    if type(result) ~= "table" then
+        return {
+            Name = name,
+            Success = false,
+            Reason = "Invalid callback response"
+        }
+    end
+
+    return {
+        Name = name,
+        Success = result.Success == true,
+        Reason = tostring(result.Message or "No message returned")
+    }
 end
 
 local function getOrderedSections(data)
