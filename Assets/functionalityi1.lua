@@ -4,7 +4,7 @@ local FunctionnalityTester = {
 
 local MOTD_URL = 'https://raw.githubusercontent.com/00uxnx/productions/main/extra/motd.txt'
 local CHANGELOGS_URL = 'https://raw.githubusercontent.com/00uxnx/productions/main/extra/Changelogs.lua'
-local REQUIRE_TEST_URL = 'https://raw.githubusercontent.com/00uxnx/nocturne/main/Assets/req.lua'
+local REQUIRE_TEST_URL = 'https://raw.githubusercontent.com/00uxnx/nocturne/refs/heads/main/Assets/req.lua'
 local execfuncs = {}
 
 local SECTION_ORDER = { "Loader", "Vantage", "Rivals", "Doors" }
@@ -146,14 +146,41 @@ local function runTest(name)
         return { Name = name, Success = false, Reason = "Not a function" }
     end
 
-    -- Actually attempt to require the remote example script
+    -- Test URL-based require and validate the table returned by req.lua.
     if name == "require" then
-        local okCall, result = pcall(fn, REQUIRE_TEST_URL)
+        local okCall, result = pcall(function()
+            return fn(REQUIRE_TEST_URL)
+        end)
+
         if not okCall then
-            local msg = tostring(result)
-            return { Name = name, Success = false, Reason = msg }
+            return {
+                Name = name,
+                Success = false,
+                Reason = "require call failed: " .. tostring(result),
+            }
         end
-        return { Name = name, Success = true }
+
+        if type(result) ~= "table" then
+            return {
+                Name = name,
+                Success = false,
+                Reason = "req.lua must return a table; got " .. typeof(result),
+            }
+        end
+
+        if result.Success ~= true then
+            return {
+                Name = name,
+                Success = false,
+                Reason = tostring(result.Message or "The require test returned Success = false"),
+            }
+        end
+
+        return {
+            Name = name,
+            Success = true,
+            Reason = tostring(result.Message or "require test passed"),
+        }
     end
 
     return { Name = name, Success = true }
@@ -186,35 +213,6 @@ function FunctionnalityTester:Init(funcs)
 
     local Players = game:GetService("Players")
     local localPlayer = Players.LocalPlayer
-    local parentTo
-
-    -- Executor environments may expose CoreGui. Standard Roblox clients
-    -- should use the local player's PlayerGui.
-    local okCore, coreGui = pcall(function()
-        return game:GetService("CoreGui")
-    end)
-
-    if okCore and coreGui then
-        local okParent = pcall(function()
-            parentTo = coreGui
-        end)
-        if not okParent then
-            parentTo = nil
-        end
-    end
-
-    if not parentTo then
-        if not localPlayer then
-            error("FunctionnalityTester must be initialized on the client")
-        end
-        parentTo = localPlayer:WaitForChild("PlayerGui")
-    end
-
-    -- Remove an earlier copy so repeated Init() calls do not stack GUIs.
-    local previousGui = parentTo:FindFirstChild("FunctionnalityTester")
-    if previousGui then
-        previousGui:Destroy()
-    end
 
     local gui = make("ScreenGui", {
         Name = "FunctionnalityTester",
