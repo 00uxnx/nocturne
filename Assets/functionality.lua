@@ -14,6 +14,7 @@ local TweenService = game:GetService("TweenService")
 local RunService = game:GetService("RunService")
 
 local FONT = Enum.Font.Code
+local AUTO_CLOSE_SECONDS = 10 -- Set to 0 to keep the window open until manually destroyed.
 
 local httpRequest = (syn and syn.request)
     or (http and http.request)
@@ -51,13 +52,38 @@ end
 FunctionnalityTester.FuncThisWhenDone = newSignal()
 
 local function make(className, props)
-    local i = Instance.new(className)
-    for k, v in pairs(props or {}) do
-        if k ~= "Parent" then
-            pcall(function() i[k] = v end)
+    local instance = Instance.new(className)
+    local parent = nil
+
+    -- Set normal properties first. Parent is assigned last so the object is
+    -- fully configured before Roblox displays it.
+    for property, value in pairs(props or {}) do
+        if property == "Parent" then
+            parent = value
+        else
+            local ok, err = pcall(function()
+                instance[property] = value
+            end)
+            if not ok then
+                warn("[FunctionnalityTester] Could not set " .. tostring(property)
+                    .. " on " .. tostring(className) .. ": " .. tostring(err))
+            end
         end
     end
-    return i
+
+    if parent then
+        local ok, err = pcall(function()
+            instance.Parent = parent
+        end)
+        if not ok then
+            warn("[FunctionnalityTester] Could not parent " .. tostring(className)
+                .. ": " .. tostring(err))
+            instance:Destroy()
+            return nil
+        end
+    end
+
+    return instance
 end
 
 local function makeDraggable(target, handle)
@@ -158,10 +184,36 @@ end
 function FunctionnalityTester:Init(funcs)
     execfuncs = funcs or {}
 
+    local Players = game:GetService("Players")
+    local localPlayer = Players.LocalPlayer
     local parentTo
-    local okCore = pcall(function() parentTo = game.CoreGui end)
-    if not okCore or not parentTo then
-        parentTo = game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui")
+
+    -- Executor environments may expose CoreGui. Standard Roblox clients
+    -- should use the local player's PlayerGui.
+    local okCore, coreGui = pcall(function()
+        return game:GetService("CoreGui")
+    end)
+
+    if okCore and coreGui then
+        local okParent = pcall(function()
+            parentTo = coreGui
+        end)
+        if not okParent then
+            parentTo = nil
+        end
+    end
+
+    if not parentTo then
+        if not localPlayer then
+            error("FunctionnalityTester must be initialized on the client")
+        end
+        parentTo = localPlayer:WaitForChild("PlayerGui")
+    end
+
+    -- Remove an earlier copy so repeated Init() calls do not stack GUIs.
+    local previousGui = parentTo:FindFirstChild("FunctionnalityTester")
+    if previousGui then
+        previousGui:Destroy()
     end
 
     local gui = make("ScreenGui", {
@@ -170,14 +222,16 @@ function FunctionnalityTester:Init(funcs)
         IgnoreGuiInset = true,
         ResetOnSpawn = false,
         DisplayOrder = 9999,
-        Parent = parentTo,
+        Parent = game.CoreGui,
         Enabled = true
     })
 
     local mainWindow = make("CanvasGroup", {
         Name = "MainWindow",
         BackgroundTransparency = 1,
-        Position = UDim2.new(0.4246, 0, 0.296, 0),
+        GroupTransparency = 0,
+        Visible = true,
+        Position = UDim2.new(0.5, -265.5, 0.5, -136),
         Size = UDim2.fromOffset(531, 272),
         Parent = gui,
     })
@@ -517,18 +571,26 @@ function FunctionnalityTester:Init(funcs)
         end
     end)
 
-    -- Auto close
-    task.delay(10, function()
-        if rotationConn then rotationConn:Disconnect() end
+    -- Auto close (set AUTO_CLOSE_SECONDS to 0 above to disable it).
+    if AUTO_CLOSE_SECONDS > 0 then
+        task.delay(AUTO_CLOSE_SECONDS, function()
+            if not gui or not gui.Parent then return end
 
-        local tween = TweenInfo.new(0.4, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut)
-        TweenService:Create(mainWindow, tween, { GroupTransparency = 1 }):Play()
+            if rotationConn then
+                rotationConn:Disconnect()
+            end
 
-        task.delay(0.45, function()
-            if gui and gui.Parent then gui:Destroy() end
-            FunctionnalityTester.FuncThisWhenDone:Fire()
+            local tween = TweenInfo.new(0.4, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut)
+            TweenService:Create(mainWindow, tween, { GroupTransparency = 1 }):Play()
+
+            task.delay(0.45, function()
+                if gui and gui.Parent then
+                    gui:Destroy()
+                end
+                FunctionnalityTester.FuncThisWhenDone:Fire()
+            end)
         end)
-    end)
+    end
 
     return gui
 end
