@@ -14,7 +14,7 @@ local TweenService = game:GetService("TweenService")
 local RunService = game:GetService("RunService")
 
 local FONT = Enum.Font.Code
-local AUTO_CLOSE_SECONDS = 0 -- Set above zero to enable automatic closing.
+local AUTO_CLOSE_SECONDS = 5 -- Automatically close the window after five seconds.
 
 local httpRequest = (syn and syn.request)
     or (http and http.request)
@@ -129,15 +129,34 @@ local function makeDraggable(target, handle)
 end
 
 local function lookupFunc(name)
-    local env
-    local ok = pcall(function() env = getfenv(0) end)
-    if ok and env and env[name] ~= nil then return env[name] end
-    if _G[name] ~= nil then return _G[name] end
-    if typeof(getgenv) == "function" then
-        local okG, genv = pcall(getgenv)
-        if okG and genv and genv[name] ~= nil then return genv[name] end
+    local aliases = { name }
+    if name == "getclipboard" then
+        aliases = { "getclipboard", "get_clipboard", "syn_clipboard_get" }
     end
-    if shared and shared[name] ~= nil then return shared[name] end
+
+    local env
+    pcall(function() env = getfenv(0) end)
+
+    for _, candidate in ipairs(aliases) do
+        if env and env[candidate] ~= nil then return env[candidate] end
+        if _G and _G[candidate] ~= nil then return _G[candidate] end
+
+        if typeof(getgenv) == "function" then
+            local okG, genv = pcall(getgenv)
+            if okG and genv and genv[candidate] ~= nil then
+                return genv[candidate]
+            end
+        end
+
+        if shared and shared[candidate] ~= nil then
+            return shared[candidate]
+        end
+
+        if candidate == "getclipboard" and syn and syn.clipboard_get ~= nil then
+            return syn.clipboard_get
+        end
+    end
+
     return nil
 end
 
@@ -154,6 +173,33 @@ local function runTest(name)
 
     if type(fn) ~= "function" then
         return { Name = name, Success = false, Reason = "Not a function" }
+    end
+
+    -- Actually call getclipboard. An empty clipboard may legitimately return nil;
+    -- a string or nil means the API call itself behaved as expected.
+    if name == "getclipboard" then
+        local callOk, clipboardValue = pcall(fn)
+        if not callOk then
+            return {
+                Name = name,
+                Success = false,
+                Reason = "Call failed: " .. tostring(clipboardValue),
+            }
+        end
+
+        if clipboardValue ~= nil and type(clipboardValue) ~= "string" then
+            return {
+                Name = name,
+                Success = false,
+                Reason = "Expected string or empty clipboard; got " .. typeof(clipboardValue),
+            }
+        end
+
+        return {
+            Name = name,
+            Success = true,
+            Reason = (clipboardValue == nil or clipboardValue == "") and "Clipboard empty" or "Clipboard readable",
+        }
     end
 
     -- Fetch and execute the remote test module as a Lua chunk. This does NOT
@@ -370,11 +416,12 @@ function FunctionnalityTester:Init(funcs)
         TextSize = 17,
         Font = FONT,
         TextWrapped = true,
-        TextYAlignment = Enum.TextYAlignment.Top,
-        TextXAlignment = Enum.TextXAlignment.Left,
+        TextYAlignment = Enum.TextYAlignment.Center,
+        TextXAlignment = Enum.TextXAlignment.Center,
         BackgroundTransparency = 1,
         BorderSizePixel = 0,
-        Position = UDim2.new(0.0176, 0, 0.679, 0),
+        AnchorPoint = Vector2.new(0.5, 0),
+        Position = UDim2.new(0.5, 0, 0.679, 0),
         Size = UDim2.new(0.9531, 0, 0.116, 0),
         Parent = holder,
     })
@@ -401,10 +448,15 @@ function FunctionnalityTester:Init(funcs)
     clStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
     clStroke.Color = Color3.fromRGB(50, 50, 50)
 
-    local twis = make("ImageLabel", {
-        Name = "twis",
-        Image = "rbxassetid://10723433935",
-        ImageColor3 = Color3.fromRGB(80, 80, 80),
+    -- Simple rotating star glyph instead of the old image asset.
+    local twis = make("TextLabel", {
+        Name = "SpinnerIcon",
+        Text = "✦",
+        TextColor3 = Color3.fromRGB(125, 125, 145),
+        TextSize = 34,
+        Font = Enum.Font.GothamBold,
+        TextXAlignment = Enum.TextXAlignment.Center,
+        TextYAlignment = Enum.TextYAlignment.Center,
         BackgroundTransparency = 1,
         Position = UDim2.new(0.4428, 0, 0.819, 0),
         Size = UDim2.new(0.1026, 0, 0.141, 0),
@@ -602,7 +654,7 @@ function FunctionnalityTester:Init(funcs)
 
     -- Auto close (set AUTO_CLOSE_SECONDS to 0 above to disable it).
     if AUTO_CLOSE_SECONDS > 0 then
-        task.delay(AUTO_CLOSE_SECONDS, function()
+        task.delay(math.max(0, AUTO_CLOSE_SECONDS - 0.4), function()
             if not gui or not gui.Parent then return end
 
             if rotationConn then
@@ -612,7 +664,7 @@ function FunctionnalityTester:Init(funcs)
             local tween = TweenInfo.new(0.4, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut)
             TweenService:Create(mainWindow, tween, { GroupTransparency = 1 }):Play()
 
-            task.delay(0.45, function()
+            task.delay(0.4, function()
                 if gui and gui.Parent then
                     gui:Destroy()
                 end
